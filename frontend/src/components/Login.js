@@ -12,7 +12,7 @@ function Login() {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [sapId, setSapId] = useState(''); // <-- NEW STATE FOR SAP ID
+  const [sapId, setSapId] = useState(''); 
   
   const [message, setMessage] = useState({ text: '', type: '' });
 
@@ -26,17 +26,16 @@ function Login() {
 
     try {
       if (isRegistering) {
-        // Send the SAP ID along with the registration data
         const payload = { role, name, email, password };
         if (role === 'Student') payload.sap_id = sapId;
 
-        const res = await axios.post('http://localhost:5000/api/auth/register', payload);
+        const res = await axios.post('https://smart-campus-system-87sd.onrender.com/api/auth/register', payload);
         setMessage({ text: res.data.message, type: 'success' });
         setIsRegistering(false); 
         setPassword(''); 
         setSapId('');
       } else {
-        const response = await axios.post('http://localhost:5000/api/auth/login', { email, password });
+        const response = await axios.post('https://smart-campus-system-87sd.onrender.com/api/auth/login', { email, password });
 
         if (response.data.user.role !== role) {
           setMessage({ text: `Access Denied. This is the ${role} portal.`, type: 'error' });
@@ -82,7 +81,6 @@ function Login() {
 
           <input type="email" placeholder="Email Address" value={email} onChange={(e) => setEmail(e.target.value)} style={inputStyle} required />
           
-          {/* NEW: SAP ID INPUT FOR STUDENTS ONLY */}
           {isRegistering && role === 'Student' && (
             <input type="text" placeholder="SAP ID / Roll Number" value={sapId} onChange={(e) => setSapId(e.target.value)} style={{...inputStyle, border: '2px solid #FF9800'}} required />
           )}

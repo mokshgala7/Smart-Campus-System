@@ -7,13 +7,13 @@ require('dotenv').config();
 // --- IMPORT ROUTES ---
 const authRoutes = require('./routes/auth');
 const hardwareRoutes = require('./routes/hardware');
-const dashboardRoutes = require('./routes/dashboard'); // Keep this commented out for now
+const dashboardRoutes = require('./routes/dashboard'); // Keep this active!
 
 const app = express();
 
 // --- MIDDLEWARE ---
 app.use(express.json()); 
-app.use(cors());         
+app.use(cors());        
 
 // --- CONNECT TO DATABASE ---
 mongoose.connect(process.env.MONGO_URI)
@@ -23,6 +23,7 @@ mongoose.connect(process.env.MONGO_URI)
 // --- USE ROUTES ---
 app.use('/api/auth', authRoutes); 
 app.use('/api/hardware', hardwareRoutes); 
+app.use('/api/dashboard', dashboardRoutes); // <-- Added this back so your tables load!
 
 // A simple test route to verify it works
 app.get('/api/status', (req, res) => {
@@ -34,4 +35,3 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`🚀 Server started on port ${PORT}`);
 });
-

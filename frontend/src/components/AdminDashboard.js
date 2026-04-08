@@ -6,9 +6,8 @@ function AdminDashboard() {
   const [data, setData] = useState({ students: [], sessions: [] });
   const navigate = useNavigate();
 
-  // --- NEW ENROLLMENT STATE ---
   const [showModal, setShowModal] = useState(false);
-  const [enrollStep, setEnrollStep] = useState(1); // 1: Form, 2: Scanning, 3: Success
+  const [enrollStep, setEnrollStep] = useState(1); 
   const [formData, setFormData] = useState({ name: '', email: '', sap_id: '' });
   const [scanStatus, setScanStatus] = useState('Waiting for hardware scan...');
 
@@ -23,7 +22,7 @@ function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      const response = await axios.get('http://localhost:5000/api/dashboard');
+      const response = await axios.get('https://smart-campus-system-87sd.onrender.com/api/dashboard');
       setData(response.data);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -35,48 +34,40 @@ function AdminDashboard() {
     navigate('/');
   };
 
-  // --- ENROLLMENT LOGIC (FIXED FOR 400 ERRORS) ---
   const startHardwareScan = async (e) => {
     e.preventDefault();
-    setEnrollStep(2); // Move to scanning UI
+    setEnrollStep(2); 
     
     try {
-      // 1. Tell server to enter ENROLL mode
-      await axios.post('http://localhost:5000/api/hardware/set-mode', { mode: 'ENROLL' });
+      await axios.post('https://smart-campus-system-87sd.onrender.com/api/hardware/set-mode', { mode: 'ENROLL' });
       
-      // 2. Start polling the server every 1 second to see if hardware sent data
       const pollInterval = setInterval(async () => {
         try {
-          const statusRes = await axios.get('http://localhost:5000/api/hardware/enroll-status');
+          const statusRes = await axios.get('https://smart-campus-system-87sd.onrender.com/api/hardware/enroll-status');
           const { rfid, fingerprint, message } = statusRes.data;
 
-          // UPDATE THE UI WITH LIVE TELEMETRY
           if (message) {
             setScanStatus(message);
           }
 
           if (rfid && fingerprint) {
-            clearInterval(pollInterval); // Stop polling
+            clearInterval(pollInterval); 
             
-            // 3. Hardware found! Save everything to the database
-            await axios.post('http://localhost:5000/api/auth/register', {
+            await axios.post('https://smart-campus-system-87sd.onrender.com/api/auth/register', {
               ...formData,
               studentId: rfid,
               fingerprintId: fingerprint
             });
 
-            // 4. Tell server to go back to GATE mode
-            await axios.post('http://localhost:5000/api/hardware/set-mode', { mode: 'GATE' });
+            await axios.post('https://smart-campus-system-87sd.onrender.com/api/hardware/set-mode', { mode: 'GATE' });
             
-            setEnrollStep(3); // Move to success UI
-            fetchData(); // Refresh table
+            setEnrollStep(3); 
+            fetchData(); 
           }
         } catch (intervalErr) {
-          // If the server rejects the registration (e.g., duplicate email/SAP ID)
           clearInterval(pollInterval);
-          await axios.post('http://localhost:5000/api/hardware/set-mode', { mode: 'GATE' }); // Reset hardware
+          await axios.post('https://smart-campus-system-87sd.onrender.com/api/hardware/set-mode', { mode: 'GATE' }); 
           
-          // Grab the exact error message from our backend and display it!
           const errorMsg = intervalErr.response?.data?.error || "Registration failed.";
           setScanStatus(`❌ Error: ${errorMsg}`);
         }
@@ -93,8 +84,7 @@ function AdminDashboard() {
     setEnrollStep(1);
     setFormData({ name: '', email: '', sap_id: '' });
     setScanStatus('Waiting for hardware scan...');
-    // Ensure hardware goes back to normal if admin cancels halfway
-    await axios.post('http://localhost:5000/api/hardware/set-mode', { mode: 'GATE' });
+    await axios.post('https://smart-campus-system-87sd.onrender.com/api/hardware/set-mode', { mode: 'GATE' });
   };
 
   return (
@@ -113,7 +103,6 @@ function AdminDashboard() {
         </div>
       </div>
 
-      {/* --- PROVISIONING MODAL --- */}
       {showModal && (
         <div style={modalOverlayStyle}>
           <div style={modalContentStyle}>
@@ -142,7 +131,6 @@ function AdminDashboard() {
                 <div style={{ fontSize: '50px', marginBottom: '20px', animation: 'pulse 1.5s infinite' }}>📡</div>
                 <h3 style={{ margin: '0 0 10px 0' }}>System is in ENROLL Mode</h3>
                 
-                {/* THIS PARAGRAPH NOW DISPLAYS THE LIVE MESSAGES */}
                 <p style={{ color: '#000', backgroundColor: '#FFC107', padding: '10px', borderRadius: '4px', fontWeight: 'bold', border: '2px solid #000' }}>
                   {scanStatus}
                 </p>
@@ -164,7 +152,6 @@ function AdminDashboard() {
         </div>
       )}
 
-      {/* Tables */}
       <div style={{ display: 'grid', gridTemplateColumns: '1fr 2fr', gap: '30px' }}>
         <div style={cardStyle}>
           <h2 style={{ borderBottom: '4px solid #FFC107', paddingBottom: '10px', marginTop: 0 }}>Enrolled Students</h2>
@@ -208,13 +195,11 @@ function AdminDashboard() {
         </div>
       </div>
       
-      {/* Tiny CSS animation for the scanning icon */}
       <style>{`@keyframes pulse { 0% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.2); opacity: 0.7; } 100% { transform: scale(1); opacity: 1; } }`}</style>
     </div>
   );
 }
 
-// --- Styles ---
 const cardStyle = { backgroundColor: '#fff', padding: '25px', border: '3px solid #000', borderRadius: '8px', boxShadow: '6px 6px 0px #000' };
 const tableStyle = { width: '100%', borderCollapse: 'collapse', marginTop: '15px' };
 const thStyle = { padding: '12px', textAlign: 'left', borderBottom: '3px solid #000' };
@@ -222,7 +207,6 @@ const tdStyle = { padding: '12px', borderBottom: '1px solid #ddd' };
 const btnStyle = { padding: '10px 20px', backgroundColor: '#000', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold' };
 const inputStyle = { padding: '12px', fontSize: '16px', border: '2px solid #000', borderRadius: '4px', outline: 'none', boxSizing: 'border-box' };
 
-// Modal Styles
 const modalOverlayStyle = { position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, backgroundColor: 'rgba(0,0,0,0.7)', display: 'flex', justifyContent: 'center', alignItems: 'center', zIndex: 1000 };
 const modalContentStyle = { backgroundColor: '#fff', padding: '40px', border: '4px solid #000', borderRadius: '12px', width: '400px', boxShadow: '10px 10px 0px #000', boxSizing: 'border-box' };
 
