@@ -53,8 +53,11 @@ function AdminDashboard() {
           if (rfid && fingerprint) {
             clearInterval(pollInterval); 
             
+            // --- FIXED: Added Role and Default Password ---
             await axios.post('https://smart-campus-system-87sd.onrender.com/api/auth/register', {
               ...formData,
+              role: 'Student',
+              password: 'smartcampus123',
               studentId: rfid,
               fingerprintId: fingerprint
             });
