@@ -22,7 +22,10 @@ function AdminDashboard() {
 
   const fetchData = async () => {
     try {
-      const response = await axios.get('https://smart-campus-system-87sd.onrender.com/api/dashboard');
+      const token = localStorage.getItem('token');
+      const response = await axios.get('https://smart-campus-system-87sd.onrender.com/api/dashboard', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       setData(response.data);
     } catch (error) {
       console.error("Error fetching data:", error);
@@ -53,7 +56,6 @@ function AdminDashboard() {
           if (rfid && fingerprint) {
             clearInterval(pollInterval); 
             
-            // --- FIXED: Added Role and Default Password ---
             await axios.post('https://smart-campus-system-87sd.onrender.com/api/auth/register', {
               ...formData,
               role: 'Student',

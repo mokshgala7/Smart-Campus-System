@@ -22,11 +22,14 @@ function StudentDashboard() {
 
   const fetchData = async () => {
     try {
-      const response = await axios.get('https://smart-campus-system-87sd.onrender.com/api/dashboard');
+      const token = localStorage.getItem('token');
+      const response = await axios.get('https://smart-campus-system-87sd.onrender.com/api/dashboard', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
       const allSessions = response.data.sessions;
       
       const filteredSessions = allSessions.filter(
-        session => session.studentObjId?._id === user.id
+        session => session.studentObjId?._id === user.id || session.studentObjId?._id === user._id
       );
       
       setMySessions(filteredSessions);
