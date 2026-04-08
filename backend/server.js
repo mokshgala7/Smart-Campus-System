@@ -35,6 +35,3 @@ app.listen(PORT, () => {
   console.log(`🚀 Server started on port ${PORT}`);
 });
 
-app.use('/api/auth', authRoutes); 
-app.use('/api/hardware', hardwareRoutes); 
-app.use('/api/dashboard', dashboardRoutes);

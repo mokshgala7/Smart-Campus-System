@@ -3,7 +3,7 @@ const router = express.Router();
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('../models/User');
-const nodemailer = require('nodemailer'); // <-- 1. IMPORT NODEMAILER
+const nodemailer = require('nodemailer'); 
 
 // --- SETUP THE EMAIL DISPATCHER ---
 const transporter = nodemailer.createTransport({
@@ -22,7 +22,17 @@ router.post('/register', async (req, res) => {
     // SCENARIO 1: Admin is Provisioning Hardware (Comes from Admin Dashboard)
     if (studentId && fingerprintId) {
       const existingUser = await User.findOne({ $or: [{ email }, { sap_id }] });
-      if (existingUser) return res.status(400).json({ error: 'Student with this Email or SAP ID already exists.' });
+      
+      if (existingUser) {
+        // 🚨 THE RACE CONDITION FIX:
+        // Catch duplicate network requests sent by React's fast polling.
+        if (existingUser.studentId === studentId && String(existingUser.fingerprintId) === String(fingerprintId)) {
+          return res.status(200).json({ message: 'Hardware provisioned successfully!' });
+        }
+        
+        // If IDs don't match, it's a real conflict
+        return res.status(400).json({ error: 'Student with this Email or SAP ID already exists.' });
+      }
 
       const newUser = new User({
         role: 'Student', name, email, sap_id, studentId, fingerprintId,
@@ -30,7 +40,7 @@ router.post('/register', async (req, res) => {
       });
       await newUser.save();
 
-      // --- 2. SEND THE WELCOME EMAIL ---
+      // --- SEND THE WELCOME EMAIL ---
       try {
         await transporter.sendMail({
           from: `"Smart Campus Security" <${process.env.EMAIL_USER}>`,

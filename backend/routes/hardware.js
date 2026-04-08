@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const User = require('../models/User');
 const Session = require('../models/Session');
-const nodemailer = require('nodemailer'); // <-- IMPORT NODEMAILER
+const nodemailer = require('nodemailer'); 
 
 // --- SETUP THE EMAIL DISPATCHER ---
 const transporter = nodemailer.createTransport({
@@ -58,9 +58,20 @@ router.post('/scan', async (req, res) => {
       return res.json({ message: 'Enrollment data received!' });
     } 
     
-    // --- NORMAL GATE LOGIC ---
+    // --- NORMAL GATE LOGIC (WITH 2FA SECURITY) ---
     const student = await User.findOne({ studentId: rfidTag, role: 'Student' });
-    if (!student) return res.status(404).json({ error: 'Access Denied.' });
+    
+    // 1. Check if the RFID card exists in the database
+    if (!student) {
+      console.log(`❌ Security Alert: Unregistered RFID Card scanned (${rfidTag})`);
+      return res.status(404).json({ error: 'Access Denied: Invalid ID Card.' });
+    }
+
+    // 2. 🚨 TWO-FACTOR AUTHENTICATION: Verify the fingerprint belongs to this exact card
+    if (String(student.fingerprintId) !== String(fingerId)) {
+      console.log(`❌ Security Alert: Fingerprint mismatch! Card expected finger #${student.fingerprintId}, but got finger #${fingerId}`);
+      return res.status(403).json({ error: 'Access Denied: Fingerprint does not match ID Card.' });
+    }
 
     const now = new Date();
     const todayString = now.toISOString().split('T')[0]; 
@@ -75,7 +86,7 @@ router.post('/scan', async (req, res) => {
       student.currentStatus = 'Inside';
       await student.save();
 
-      // Send Check-In Email (Fire and forget)
+      // Send Check-In Email
       transporter.sendMail({
         from: `"Smart Campus Security" <${process.env.EMAIL_USER}>`,
         to: student.email,
@@ -104,7 +115,7 @@ router.post('/scan', async (req, res) => {
       
       let durationMinutes = 0;
       let checkInTimeString = "Unknown";
-      let formattedDuration = "00:00:00"; // New HH:MM:SS format
+      let formattedDuration = "00:00:00"; // Exact timer
 
       if (activeSession) {
         activeSession.checkOutTime = now;
@@ -119,7 +130,7 @@ router.post('/scan', async (req, res) => {
         formattedDuration = `${h}:${m}:${s}`;
 
         durationMinutes = Math.round(diffInSeconds / 60);
-        activeSession.durationMinutes = durationMinutes; // Keeping this for the DB history mapping
+        activeSession.durationMinutes = durationMinutes; 
         
         checkInTimeString = new Date(activeSession.checkInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         await activeSession.save();
@@ -140,7 +151,7 @@ router.post('/scan', async (req, res) => {
         </tr>
       `).join('');
 
-      // Send Check-Out Email with HH:MM:SS format
+      // Send Check-Out Email
       transporter.sendMail({
         from: `"Smart Campus Security" <${process.env.EMAIL_USER}>`,
         to: student.email,
