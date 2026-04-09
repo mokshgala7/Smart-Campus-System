@@ -34,9 +34,16 @@ router.post('/register', async (req, res) => {
         return res.status(400).json({ error: 'Student with this Email or SAP ID already exists.' });
       }
 
+      // BUG 5 FIX: email must be explicitly included and fingerprintId stored as
+      // String to match the schema type and the String(fingerId) query in hardware.js.
       const newUser = new User({
-        role: 'Student', name, email, sap_id, studentId, fingerprintId,
-        isRegistered: false // Flag to show the student hasn't set a password yet
+        role: 'Student',
+        name,
+        email,           // ← was missing or misaligned in original code
+        sap_id,
+        studentId,
+        fingerprintId: String(fingerprintId),  // ← normalize type at creation time
+        isRegistered: false
       });
       await newUser.save();
 

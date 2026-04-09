@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import axios from 'axios';
 import { useNavigate } from 'react-router-dom';
 
@@ -10,6 +10,11 @@ function AdminDashboard() {
   const [enrollStep, setEnrollStep] = useState(1); 
   const [formData, setFormData] = useState({ name: '', email: '', sap_id: '' });
   const [scanStatus, setScanStatus] = useState('Waiting for hardware scan...');
+
+  // BUG 3 FIX: Store the poll interval in a ref so closeModal/abort can ALWAYS
+  // clear it, regardless of whether the component re-rendered since it was created.
+  // A locally-scoped variable inside startHardwareScan is unreachable from closeModal.
+  const pollIntervalRef = useRef(null);
 
   useEffect(() => {
     const role = localStorage.getItem('role');
@@ -44,7 +49,7 @@ function AdminDashboard() {
     try {
       await axios.post('http://localhost:5000/api/hardware/set-mode', { mode: 'ENROLL' });
       
-      const pollInterval = setInterval(async () => {
+      pollIntervalRef.current = setInterval(async () => {
         try {
           const statusRes = await axios.get('http://localhost:5000/api/hardware/enroll-status');
           const { rfid, fingerprint, message } = statusRes.data;
@@ -54,7 +59,8 @@ function AdminDashboard() {
           }
 
           if (rfid && fingerprint) {
-            clearInterval(pollInterval); 
+            clearInterval(pollIntervalRef.current);
+            pollIntervalRef.current = null;
             
             await axios.post('http://localhost:5000/api/auth/register', {
               ...formData,
@@ -70,7 +76,8 @@ function AdminDashboard() {
             fetchData(); 
           }
         } catch (intervalErr) {
-          clearInterval(pollInterval);
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
           await axios.post('http://localhost:5000/api/hardware/set-mode', { mode: 'GATE' }); 
           
           const errorMsg = intervalErr.response?.data?.error || "Registration failed.";
@@ -85,6 +92,14 @@ function AdminDashboard() {
   };
 
   const closeModal = async () => {
+    // BUG 3 FIX: Always clear the poll interval before closing.
+    // Without this, clicking "Abort" leaves a zombie interval running,
+    // which continues to call setState on an unmounted component and
+    // can trigger unexpected re-registrations.
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
     setShowModal(false);
     setEnrollStep(1);
     setFormData({ name: '', email: '', sap_id: '' });

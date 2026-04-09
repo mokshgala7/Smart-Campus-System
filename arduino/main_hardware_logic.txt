@@ -30,7 +30,7 @@ String currentMode = "GATE";
 unsigned long lastPollTime = 0;
 
 void setup() {
-  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Stops the chip from restarting
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0);
   
   Serial.begin(115200);
   delay(1000); 
@@ -48,7 +48,6 @@ void setup() {
   mySerial.begin(57600, SERIAL_8N1, 16, 17);
   finger.begin(57600);
   
-  // LOUD FINGERPRINT CHECK
   if (finger.verifyPassword()) {
     Serial.println("✅ FINGERPRINT SENSOR ONLINE!");
   } else {
@@ -68,7 +67,6 @@ void setup() {
 }
 
 void loop() {
-  // 1. Check for RFID Card
   if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
     String rfidTag = getRFIDString();
     Serial.println("\n💳 CARD TAPPED! ID: " + rfidTag);
@@ -111,7 +109,6 @@ void loop() {
     rfid.PICC_HaltA();
   }
 
-  // 2. Poll Server every 3 seconds
   if (millis() - lastPollTime > 3000) {
     pollServerMode();
     lastPollTime = millis();
@@ -135,13 +132,17 @@ void pollServerMode() {
   int httpCode = http.GET();
   if (httpCode == 200) {
     String payload = http.getString();
-    String newMode = (payload.indexOf("ENROLL") > 0) ? "ENROLL" : "GATE";
+    payload.trim();
+
+    // ✅ BUG 2 FIX: Was (payload.indexOf("ENROLL") > 0)
+    // "ENROLL" is at index 0, so > 0 is always false → ESP32 permanently stuck in GATE mode.
+    String newMode = (payload == "ENROLL") ? "ENROLL" : "GATE";
+
     if (currentMode != newMode) {
       currentMode = newMode;
       Serial.println("📡 [SERVER STATUS] Mode Changed to: " + currentMode);
     }
   } else {
-    // Only print error if it fails, so it doesn't spam the monitor
     Serial.println("⚠️ [SERVER STATUS] Connection Failed! HTTP Code: " + String(httpCode) + " - Is Node.js running?");
   }
   http.end();
@@ -207,8 +208,23 @@ int waitForFingerprintMatch(int timeoutMs) {
 }
 
 int enrollNewFingerprintWithTimeouts() {
-  finger.getTemplateCount();
+  // ✅ BUG 4 FIX: Original code ignored getTemplateCount() return value.
+  // If sensor comms failed, templateCount stayed 0 → every enrollment
+  // overwrote slot #1, corrupting all existing users after 2 enrollments.
+  uint8_t countResult = finger.getTemplateCount();
+  if (countResult != FINGERPRINT_OK) {
+    Serial.println("❌ Could not read template count from sensor! Aborting enrollment.");
+    return -1;
+  }
+
   int id = finger.templateCount + 1;
+  Serial.println("📋 Templates on sensor: " + String(finger.templateCount) + " → Assigning new ID: " + String(id));
+
+  if (id > 127) {
+    Serial.println("❌ Sensor memory full (max 127 templates)!");
+    return -1;
+  }
+
   unsigned long st = millis();
   while (finger.getImage() != FINGERPRINT_OK) { if (millis()-st > 15000) return -2; delay(50); }
   if (finger.image2Tz(1) != FINGERPRINT_OK) return -1;

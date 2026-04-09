@@ -14,7 +14,11 @@ router.get('/mode', (req, res) => {
 
 // 2. Admin UI sets this to ENROLL
 router.post('/set-mode', (req, res) => {
-  currentMode = req.body.mode;
+  const newMode = req.body.mode;
+  if (!['GATE', 'ENROLL'].includes(newMode)) {
+    return res.status(400).json({ error: 'Invalid mode.' });
+  }
+  currentMode = newMode;
   if (currentMode === 'ENROLL') {
     enrollState = { rfid: null, fingerprint: null, message: 'System is in ENROLL Mode. Waiting for scan...' };
   }
@@ -25,7 +29,10 @@ router.post('/set-mode', (req, res) => {
 router.post('/enroll-update', (req, res) => {
   if (req.body.message) enrollState.message = req.body.message;
   if (req.body.rfid) enrollState.rfid = req.body.rfid;
-  if (req.body.fingerId) enrollState.fingerprint = req.body.fingerId;
+  // BUG 4 FIX: Normalize to String immediately so the entire pipeline is type-consistent.
+  if (req.body.fingerId !== undefined && req.body.fingerId !== null) {
+    enrollState.fingerprint = String(req.body.fingerId);
+  }
   res.sendStatus(200);
 });
 
@@ -39,8 +46,9 @@ router.post('/scan', async (req, res) => {
   try {
     const { rfidTag, fingerId } = req.body;
 
-    // CRITICAL FIX: The Card AND the Fingerprint MUST belong to the SAME user.
-    const user = await User.findOne({ studentId: rfidTag, fingerprintId: fingerId, role: 'Student' });
+    // BUG 1 FIX: Query both fields on the SAME document AND cast fingerId to String
+    // to guarantee a type-safe match against the String-typed schema field.
+    const user = await User.findOne({ studentId: rfidTag, fingerprintId: String(fingerId), role: 'Student' });
 
     if (!user) {
       return res.status(403).json({ error: "ACCESS DENIED: Card and Fingerprint do not match!" });
