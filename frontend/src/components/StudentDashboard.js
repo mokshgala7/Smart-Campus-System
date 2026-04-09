@@ -24,7 +24,7 @@ function StudentDashboard() {
 
   const fetchData = async () => {
     try {
-      const response = await axios.get('https://smart-campus-system-87sd.onrender.com/api/dashboard');
+      const response = await axios.get('http://localhost:5000/api/dashboard');
       const allSessions = response.data.sessions || [];
 
       // 1. Filter sessions for THIS student only

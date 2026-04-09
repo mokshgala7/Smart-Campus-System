@@ -1,0 +1,230 @@
+#include <WiFi.h>
+#include <HTTPClient.h>
+#include <SPI.h>
+#include <MFRC522.h>
+#include <Adafruit_Fingerprint.h>
+#include <ESP32Servo.h>
+#include "soc/soc.h"           
+#include "soc/rtc_cntl_reg.h"  
+
+// ==========================================
+// 🌐 CONFIGURATION (LOCAL PC MODE)
+// ==========================================
+const char* ssid = "mokshsamsung";
+const char* password = "mokshxyz";
+
+// ⚠️ CHANGE THIS TO YOUR LAPTOP'S IPv4 ADDRESS! ⚠️
+const String SERVER_URL = "http://192.168.X.X:5000/api/hardware"; 
+
+#define SS_PIN 5
+#define RST_PIN 22
+#define BUZZER_PIN 4
+#define SERVO_PIN 13
+
+MFRC522 rfid(SS_PIN, RST_PIN);
+HardwareSerial mySerial(2); 
+Adafruit_Fingerprint finger = Adafruit_Fingerprint(&mySerial);
+Servo gateServo;
+
+String currentMode = "GATE";
+unsigned long lastPollTime = 0;
+
+void setup() {
+  WRITE_PERI_REG(RTC_CNTL_BROWN_OUT_REG, 0); // Stops the chip from restarting
+  
+  Serial.begin(115200);
+  delay(1000); 
+  Serial.println("\n\n--- 🚀 SYSTEM BOOTING (LOCAL MODE) ---");
+  
+  pinMode(BUZZER_PIN, OUTPUT);
+  gateServo.setPeriodHertz(50); 
+  gateServo.attach(SERVO_PIN, 500, 2400);
+  gateServo.write(0);
+
+  SPI.begin();
+  rfid.PCD_Init();
+  Serial.println("✅ RFID Scanner Initialized");
+  
+  mySerial.begin(57600, SERIAL_8N1, 16, 17);
+  finger.begin(57600);
+  
+  // LOUD FINGERPRINT CHECK
+  if (finger.verifyPassword()) {
+    Serial.println("✅ FINGERPRINT SENSOR ONLINE!");
+  } else {
+    Serial.println("❌ FINGERPRINT SENSOR NOT FOUND! (Check Green wire -> Pin 16, White wire -> Pin 17)");
+  }
+
+  Serial.print("Connecting to WiFi...");
+  WiFi.begin(ssid, password);
+  WiFi.setSleep(false); 
+  
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+  }
+  Serial.println("\n✅ WiFi Connected! IP Address: " + WiFi.localIP().toString());
+  successBeep();
+}
+
+void loop() {
+  // 1. Check for RFID Card
+  if (rfid.PICC_IsNewCardPresent() && rfid.PICC_ReadCardSerial()) {
+    String rfidTag = getRFIDString();
+    Serial.println("\n💳 CARD TAPPED! ID: " + rfidTag);
+    beep(1, 100); 
+
+    if (currentMode == "ENROLL") {
+      Serial.println("▶ Mode is ENROLL. Waiting for fingerprint...");
+      updateServerStatus("RFID Scanned! Place finger...");
+      int newFingerID = enrollNewFingerprintWithTimeouts(); 
+      
+      if (newFingerID > 0) {
+         Serial.println("✅ Finger enrolled as ID #" + String(newFingerID));
+         sendEnrollDataToServer(rfidTag, newFingerID);
+         successBeep();
+      } else {
+         Serial.println("❌ Finger enrollment failed or timed out.");
+         updateServerStatus("❌ Enrollment failed.");
+         errorBeep();
+      }
+    } 
+    else {
+      Serial.println("▶ Mode is GATE. Waiting for matching fingerprint...");
+      int matchedFingerID = waitForFingerprintMatch(15000); 
+      if (matchedFingerID > 0) {
+         Serial.println("✅ Finger match found! ID #" + String(matchedFingerID));
+         Serial.println("⏳ Asking Local Server for permission...");
+         if (sendDataToServer(rfidTag, matchedFingerID)) {
+            Serial.println("🟢 SERVER APPROVED! Opening Gate.");
+            successBeep();
+            openGate();
+         } else {
+            Serial.println("🔴 SERVER REJECTED! (User not found or ID mismatch)");
+            errorBeep(); 
+         }
+      } else {
+         Serial.println("❌ Fingerprint timeout or no match.");
+         errorBeep(); 
+      }
+    }
+    rfid.PICC_HaltA();
+  }
+
+  // 2. Poll Server every 3 seconds
+  if (millis() - lastPollTime > 3000) {
+    pollServerMode();
+    lastPollTime = millis();
+  }
+}
+
+// ==========================================
+// 📡 LOCAL SERVER COMMUNICATION
+// ==========================================
+void pollServerMode() {
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("⚠️ WiFi Disconnected!");
+    return;
+  }
+  
+  WiFiClient client;
+  HTTPClient http;
+  http.begin(client, SERVER_URL + "/mode"); 
+  http.setTimeout(2500); 
+  
+  int httpCode = http.GET();
+  if (httpCode == 200) {
+    String payload = http.getString();
+    String newMode = (payload.indexOf("ENROLL") > 0) ? "ENROLL" : "GATE";
+    if (currentMode != newMode) {
+      currentMode = newMode;
+      Serial.println("📡 [SERVER STATUS] Mode Changed to: " + currentMode);
+    }
+  } else {
+    // Only print error if it fails, so it doesn't spam the monitor
+    Serial.println("⚠️ [SERVER STATUS] Connection Failed! HTTP Code: " + String(httpCode) + " - Is Node.js running?");
+  }
+  http.end();
+}
+
+void sendEnrollDataToServer(String rfidTag, int fingerId) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  WiFiClient client;
+  HTTPClient http;
+  http.begin(client, SERVER_URL + "/enroll-update"); 
+  http.addHeader("Content-Type", "application/json");
+  String payload = "{\"message\":\"Success! Verifying...\",\"rfid\":\"" + rfidTag + "\",\"fingerId\":" + String(fingerId) + "}";
+  http.POST(payload);
+  http.end();
+}
+
+bool sendDataToServer(String rfidTag, int fingerId) {
+  if (WiFi.status() != WL_CONNECTED) return false;
+  WiFiClient client;
+  HTTPClient http;
+  http.begin(client, SERVER_URL + "/scan"); 
+  http.addHeader("Content-Type", "application/json");
+  String payload = "{\"rfidTag\":\"" + rfidTag + "\",\"fingerId\":" + String(fingerId) + "}";
+  int httpCode = http.POST(payload);
+  http.end();
+  return (httpCode == 200 || httpCode == 201);
+}
+
+void updateServerStatus(String message) {
+  if (WiFi.status() != WL_CONNECTED) return;
+  WiFiClient client;
+  HTTPClient http;
+  http.begin(client, SERVER_URL + "/enroll-update"); 
+  http.addHeader("Content-Type", "application/json");
+  http.POST("{\"message\":\"" + message + "\"}");
+  http.end();
+}
+
+// ==========================================
+// 🔐 HARDWARE LOGIC
+// ==========================================
+String getRFIDString() {
+  String content = "";
+  for (byte i = 0; i < rfid.uid.size; i++) {
+    content.concat(String(rfid.uid.uidByte[i] < 0x10 ? " 0" : " "));
+    content.concat(String(rfid.uid.uidByte[i], HEX));
+  }
+  content.toUpperCase();
+  return content.substring(1); 
+}
+
+int waitForFingerprintMatch(int timeoutMs) {
+  unsigned long startTime = millis();
+  while (millis() - startTime < timeoutMs) {
+    if (finger.getImage() == FINGERPRINT_OK) {
+      if (finger.image2Tz() == FINGERPRINT_OK) {
+        if (finger.fingerSearch() == FINGERPRINT_OK) return finger.fingerID;
+      }
+    }
+    delay(50);
+  }
+  return -1; 
+}
+
+int enrollNewFingerprintWithTimeouts() {
+  finger.getTemplateCount();
+  int id = finger.templateCount + 1;
+  unsigned long st = millis();
+  while (finger.getImage() != FINGERPRINT_OK) { if (millis()-st > 15000) return -2; delay(50); }
+  if (finger.image2Tz(1) != FINGERPRINT_OK) return -1;
+  
+  beep(1, 100);
+  delay(2000); 
+
+  st = millis();
+  while (finger.getImage() != FINGERPRINT_OK) { if (millis()-st > 15000) return -2; delay(50); }
+  if (finger.image2Tz(2) != FINGERPRINT_OK || finger.createModel() != FINGERPRINT_OK) return -1;
+
+  if (finger.storeModel(id) == FINGERPRINT_OK) return id; 
+  return -1;
+}
+
+void openGate() { gateServo.write(90); delay(3000); gateServo.write(0); }
+void beep(int times, int duration) { for (int i=0; i<times; i++) { digitalWrite(BUZZER_PIN, HIGH); delay(duration); digitalWrite(BUZZER_PIN, LOW); delay(duration); } }
+void successBeep() { digitalWrite(BUZZER_PIN, HIGH); delay(100); digitalWrite(BUZZER_PIN, LOW); delay(50); digitalWrite(BUZZER_PIN, HIGH); delay(300); digitalWrite(BUZZER_PIN, LOW); }
+void errorBeep() { digitalWrite(BUZZER_PIN, HIGH); delay(1000); digitalWrite(BUZZER_PIN, LOW); }

@@ -29,13 +29,13 @@ function Login() {
         const payload = { role, name, email, password };
         if (role === 'Student') payload.sap_id = sapId;
 
-        const res = await axios.post('https://smart-campus-system-87sd.onrender.com/api/auth/register', payload);
+        const res = await axios.post('http://localhost:5000/api/auth/register', payload);
         setMessage({ text: res.data.message, type: 'success' });
         setIsRegistering(false); 
         setPassword(''); 
         setSapId('');
       } else {
-        const response = await axios.post('https://smart-campus-system-87sd.onrender.com/api/auth/login', { email, password });
+        const response = await axios.post('http://localhost:5000/api/auth/login', { email, password });
 
         if (response.data.user.role !== role) {
           setMessage({ text: `Access Denied. This is the ${role} portal.`, type: 'error' });

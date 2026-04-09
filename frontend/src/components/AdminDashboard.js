@@ -23,7 +23,7 @@ function AdminDashboard() {
   const fetchData = async () => {
     try {
       const token = localStorage.getItem('token');
-      const response = await axios.get('https://smart-campus-system-87sd.onrender.com/api/dashboard', {
+      const response = await axios.get('http://localhost:5000/api/dashboard', {
         headers: { Authorization: `Bearer ${token}` }
       });
       setData(response.data);
@@ -42,11 +42,11 @@ function AdminDashboard() {
     setEnrollStep(2); 
     
     try {
-      await axios.post('https://smart-campus-system-87sd.onrender.com/api/hardware/set-mode', { mode: 'ENROLL' });
+      await axios.post('http://localhost:5000/api/hardware/set-mode', { mode: 'ENROLL' });
       
       const pollInterval = setInterval(async () => {
         try {
-          const statusRes = await axios.get('https://smart-campus-system-87sd.onrender.com/api/hardware/enroll-status');
+          const statusRes = await axios.get('http://localhost:5000/api/hardware/enroll-status');
           const { rfid, fingerprint, message } = statusRes.data;
 
           if (message) {
@@ -56,7 +56,7 @@ function AdminDashboard() {
           if (rfid && fingerprint) {
             clearInterval(pollInterval); 
             
-            await axios.post('https://smart-campus-system-87sd.onrender.com/api/auth/register', {
+            await axios.post('http://localhost:5000/api/auth/register', {
               ...formData,
               role: 'Student',
               password: 'smartcampus123',
@@ -64,14 +64,14 @@ function AdminDashboard() {
               fingerprintId: fingerprint
             });
 
-            await axios.post('https://smart-campus-system-87sd.onrender.com/api/hardware/set-mode', { mode: 'GATE' });
+            await axios.post('http://localhost:5000/api/hardware/set-mode', { mode: 'GATE' });
             
             setEnrollStep(3); 
             fetchData(); 
           }
         } catch (intervalErr) {
           clearInterval(pollInterval);
-          await axios.post('https://smart-campus-system-87sd.onrender.com/api/hardware/set-mode', { mode: 'GATE' }); 
+          await axios.post('http://localhost:5000/api/hardware/set-mode', { mode: 'GATE' }); 
           
           const errorMsg = intervalErr.response?.data?.error || "Registration failed.";
           setScanStatus(`❌ Error: ${errorMsg}`);
@@ -89,7 +89,7 @@ function AdminDashboard() {
     setEnrollStep(1);
     setFormData({ name: '', email: '', sap_id: '' });
     setScanStatus('Waiting for hardware scan...');
-    await axios.post('https://smart-campus-system-87sd.onrender.com/api/hardware/set-mode', { mode: 'GATE' });
+    await axios.post('http://localhost:5000/api/hardware/set-mode', { mode: 'GATE' });
   };
 
   return (
